@@ -1,0 +1,17 @@
+{
+  "origin_x": 23469.3880740585,
+  "origin_y": 30305.220662758173,
+  "scale": 0.04141414141414141,
+  "rotation_rad": -0.4363323129985825,
+  "x_flipped": true,
+  "y_flipped": true,
+  "_comment": "Configuration for UWB to Floorplan coordinate transformation",
+  "_units": {
+    "origin_x": "mm - X location of image top-left corner in UWB frame",
+    "origin_y": "mm - Y location of image top-left corner in UWB frame",
+    "scale": "pixels/mm - Scale factor (1/24.1279818088302)",
+    "rotation_rad": "radians - Rotation angle (counter-clockwise)",
+    "x_flipped": "boolean - True if UWB X axis opposes Image X axis",
+    "y_flipped": "boolean - True if UWB Y axis opposes Image Y axis"
+  }
+}
