@@ -14,9 +14,6 @@ endif()
 # Find required packages
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
-# Include directories
-include_directories(${CMAKE_SOURCE_DIR}/include)
-
 # Library target
 add_library(uwb_transform SHARED
     src/FloorplanTransformer.cpp
@@ -29,7 +26,7 @@ target_link_libraries(uwb_transform
 
 target_include_directories(uwb_transform
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
 

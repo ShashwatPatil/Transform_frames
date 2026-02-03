@@ -1,0 +1,49 @@
+{
+  "_comment": "UWB Bridge Configuration File",
+  "_description": "This service subscribes to raw UWB coordinates via MQTT, transforms them using a custom library, and publishes the results",
+  
+  "mqtt": {
+    "broker_address": "tcp://localhost:1883",
+    "client_id": "uwb_bridge_cpp",
+    "username": "",
+    "password": "",
+    "source_topic": "tags/#",
+    "dest_topic_prefix": "processed/tags/",
+    "qos": 1,
+    "keepalive_interval": 60,
+    "clean_session": true,
+    "use_ssl": false,
+    
+    "_comment_broker": "MQTT broker address. Format: tcp://host:port or ssl://host:port",
+    "_comment_source": "Topic pattern to subscribe to. Use # for wildcard (e.g., tags/# matches tags/0x1234)",
+    "_comment_dest": "Prefix for published topics. Tag ID will be appended (e.g., processed/tags/0x1234)",
+    "_comment_qos": "Quality of Service: 0 (at most once), 1 (at least once), 2 (exactly once)"
+  },
+  
+  "transform": {
+    "origin_x": 23469.3880740585,
+    "origin_y": 30305.220662758173,
+    "scale": 0.04141414141414141,
+    "rotation_rad": -0.4363323129985825,
+    "x_flipped": true,
+    "y_flipped": true,
+    
+    "_comment": "Coordinate transformation parameters",
+    "_units": {
+      "origin_x": "mm - X location of image top-left corner in UWB frame",
+      "origin_y": "mm - Y location of image top-left corner in UWB frame",
+      "scale": "pixels/mm - Scale factor",
+      "rotation_rad": "radians - Rotation angle (counter-clockwise)",
+      "x_flipped": "boolean - True if UWB X axis opposes Image X axis",
+      "y_flipped": "boolean - True if UWB Y axis opposes Image Y axis"
+    }
+  },
+  
+  "log_level": "info",
+  "log_file": "/var/log/uwb_bridge/uwb_bridge.log",
+  "log_rotation_size_mb": 10,
+  "log_rotation_count": 3,
+  
+  "_comment_logging": "Log levels: trace, debug, info, warn, error, critical, off",
+  "_comment_log_file": "Set to empty string \"\" for console-only logging"
+}

@@ -1,0 +1,25 @@
+{
+  "_comment": "Example configuration for local testing",
+  
+  "mqtt": {
+    "broker_address": "tcp://localhost:1883",
+    "client_id": "uwb_bridge_test",
+    "source_topic": "test/tags/#",
+    "dest_topic_prefix": "test/processed/",
+    "qos": 0
+  },
+  
+  "transform": {
+    "origin_x": 0.0,
+    "origin_y": 0.0,
+    "scale": 1.0,
+    "rotation_rad": 0.0,
+    "x_flipped": false,
+    "y_flipped": false
+  },
+  
+  "log_level": "debug",
+  "log_file": "",
+  "log_rotation_size_mb": 10,
+  "log_rotation_count": 3
+}
