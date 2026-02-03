@@ -189,11 +189,21 @@ bool BridgeCore::parseMessage(const std::string& payload,
         auto j = nlohmann::json::parse(payload);
 
         // Try different possible field names for coordinates
-        if (j.contains("x") && j.contains("y")) {
+        // Pozyx format: {"coordinates": {"x": ..., "y": ..., "z": ...}}
+        if (j.contains("coordinates") && j["coordinates"].is_object()) {
+            auto coords = j["coordinates"];
+            uwb_x = coords["x"].get<double>();
+            uwb_y = coords["y"].get<double>();
+            uwb_z = coords.value("z", 0.0);
+        }
+        // Simple format: {"x": ..., "y": ..., "z": ...}
+        else if (j.contains("x") && j.contains("y")) {
             uwb_x = j["x"].get<double>();
             uwb_y = j["y"].get<double>();
             uwb_z = j.value("z", 0.0);
-        } else if (j.contains("posX") && j.contains("posY")) {
+        }
+        // Alternative formats
+        else if (j.contains("posX") && j.contains("posY")) {
             uwb_x = j["posX"].get<double>();
             uwb_y = j["posY"].get<double>();
             uwb_z = j.value("posZ", 0.0);
@@ -203,12 +213,17 @@ bool BridgeCore::parseMessage(const std::string& payload,
             uwb_y = pos["y"].get<double>();
             uwb_z = pos.value("z", 0.0);
         } else {
-            spdlog::warn("Message missing coordinate fields: {}", payload);
+            spdlog::warn("Message missing coordinate fields");
             return false;
         }
 
         // Extract tag ID if present
-        if (j.contains("tag_id")) {
+        // Pozyx format: {"tagData": {"tagId": "111"}}
+        if (j.contains("tagData") && j["tagData"].is_object() && j["tagData"].contains("tagId")) {
+            tag_id = j["tagData"]["tagId"].get<std::string>();
+        }
+        // Simple formats
+        else if (j.contains("tag_id")) {
             tag_id = j["tag_id"].get<std::string>();
         } else if (j.contains("tagId")) {
             tag_id = j["tagId"].get<std::string>();
