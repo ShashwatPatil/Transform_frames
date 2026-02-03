@@ -231,17 +231,17 @@ bool BridgeCore::parseMessage(const std::string& payload,
         }
 
         // Extract tag ID if present
-        // Pozyx format: {"tagData": {"tagId": "111"}}
-        if (j.contains("tagData") && j["tagData"].is_object() && j["tagData"].contains("tagId")) {
-            tag_id = j["tagData"]["tagId"].get<std::string>();
-        }
-        // Simple formats
-        else if (j.contains("tag_id")) {
-            tag_id = j["tag_id"].get<std::string>();
-        } else if (j.contains("tagId")) {
+        // Check simple top-level formats first (most common)
+        if (j.contains("tagId")) {
             tag_id = j["tagId"].get<std::string>();
+        } else if (j.contains("tag_id")) {
+            tag_id = j["tag_id"].get<std::string>();
         } else if (j.contains("id")) {
             tag_id = j["id"].get<std::string>();
+        }
+        // Nested Pozyx format: {"tagData": {"tagId": "111"}}
+        else if (j.contains("tagData") && j["tagData"].is_object() && j["tagData"].contains("tagId")) {
+            tag_id = j["tagData"]["tagId"].get<std::string>();
         }
 
         return true;
