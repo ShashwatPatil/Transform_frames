@@ -194,8 +194,16 @@ bool BridgeCore::parseMessage(const std::string& payload,
         }
 
         // Try different possible field names for coordinates
+        // Pozyx nested format: {"data": {"coordinates": {"x": ..., "y": ..., "z": ...}}}
+        if (j.contains("data") && j["data"].is_object() && 
+            j["data"].contains("coordinates") && j["data"]["coordinates"].is_object()) {
+            auto coords = j["data"]["coordinates"];
+            uwb_x = coords["x"].get<double>();
+            uwb_y = coords["y"].get<double>();
+            uwb_z = coords.value("z", 0.0);
+        }
         // Pozyx format: {"coordinates": {"x": ..., "y": ..., "z": ...}}
-        if (j.contains("coordinates") && j["coordinates"].is_object()) {
+        else if (j.contains("coordinates") && j["coordinates"].is_object()) {
             auto coords = j["coordinates"];
             uwb_x = coords["x"].get<double>();
             uwb_y = coords["y"].get<double>();
