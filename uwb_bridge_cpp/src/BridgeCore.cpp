@@ -187,6 +187,11 @@ bool BridgeCore::parseMessage(const std::string& payload,
                              std::string& tag_id) {
     try {
         auto j = nlohmann::json::parse(payload);
+        
+        // Handle Pozyx array format: [{"coordinates": {...}, ...}]
+        if (j.is_array() && !j.empty()) {
+            j = j[0];  // Extract first element
+        }
 
         // Try different possible field names for coordinates
         // Pozyx format: {"coordinates": {"x": ..., "y": ..., "z": ...}}
