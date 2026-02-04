@@ -4,7 +4,7 @@
   
   "mqtt": {
     "source_broker": {
-      "broker_address": "tcp://localhost:1883",
+      "broker_address": "tcp://192.168.1.166:1883",
       "client_id": "uwb_bridge_subscriber",
       "username": "",
       "password": "",
@@ -20,8 +20,8 @@
     "dest_broker": {
       "broker_address": "ssl://63f9c72485ab42b28b77c5640699e17b.s1.eu.hivemq.cloud:8883",
       "client_id": "uwb_bridge_publisher",
-      "username": "",
-      "password": "",
+      "username": "SGP_test",
+      "password": "Password123",
       "dest_topic_prefix": "uwb/processed/tags/",
       "qos": 1,
       "keepalive_interval": 60,

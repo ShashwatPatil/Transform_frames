@@ -140,6 +140,7 @@ int main(int argc, char* argv[]) {
         // Start bridge service
         if (!g_bridge->start()) {
             spdlog::critical("Failed to start bridge");
+            g_bridge.reset();  // Clean shutdown before exit
             return 1;
         }
 

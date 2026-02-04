@@ -112,6 +112,8 @@ bool BridgeCore::start() {
         spdlog::info("Connecting to destination MQTT broker...");
         if (!mqtt_dest_handler_->connect()) {
             spdlog::error("Failed to connect to destination MQTT broker");
+            // Disconnect source on failure to avoid partial state
+            mqtt_source_handler_->disconnect();
             return false;
         }
     } else {
@@ -138,6 +140,12 @@ void BridgeCore::stop() {
 
     spdlog::info("Stopping BridgeCore...");
     
+    // Signal shutdown to all threads first
+    shutdown_requested_ = true;
+    
+    // Give publish threads time to complete
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    
     running_ = false;
 
     // Print final statistics
@@ -161,6 +169,12 @@ void BridgeCore::stop() {
 }
 
 void BridgeCore::onMessageReceived(const std::string& topic, const std::string& payload) {
+    // Ignore messages if bridge not fully running (both brokers connected) or shutting down
+    if (!running_ || shutdown_requested_) {
+        spdlog::debug("Ignoring message - bridge not ready or shutting down");
+        return;
+    }
+    
     // Capture arrival timestamp immediately for end-to-end latency measurement
     auto arrival_time = std::chrono::high_resolution_clock::now();
     auto start_time = arrival_time;
@@ -218,12 +232,23 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
         std::string output_topic = config_.mqtt.dest_broker.dest_topic_prefix + tag_id;
         spdlog::debug("Publishing to topic: {}", output_topic);
         
+        // Capture needed data for thread - avoid capturing 'this' to prevent use-after-free
+        bool is_dual_mode = dual_mqtt_mode_;
+        auto* source_ptr = mqtt_source_handler_.get();
+        auto* dest_ptr = mqtt_dest_handler_.get();
+        auto shutdown_flag = &shutdown_requested_;
+        
         // Publish in detached thread to avoid deadlock from MQTT callback thread
-        std::thread([this, output_topic, output_json, arrival_time]() {
+        std::thread([is_dual_mode, source_ptr, dest_ptr, output_topic, output_json, arrival_time, shutdown_flag, this]() {
+            // Check if shutdown requested
+            if (shutdown_flag->load()) {
+                return;
+            }
+            
             auto publish_start = std::chrono::high_resolution_clock::now();
             
             // Use dest_handler in dual mode, source_handler in single mode
-            MqttHandler* pub_handler = dual_mqtt_mode_ ? mqtt_dest_handler_.get() : mqtt_source_handler_.get();
+            MqttHandler* pub_handler = is_dual_mode ? dest_ptr : source_ptr;
             
             if (pub_handler && pub_handler->publish(output_topic, output_json)) {
                 auto publish_end = std::chrono::high_resolution_clock::now();

@@ -153,6 +153,7 @@ private:
     
     std::atomic<bool> running_{false};
     std::atomic<bool> initialized_{false};
+    std::atomic<bool> shutdown_requested_{false};  // For graceful thread termination
     
     // Statistics (atomic for thread safety)
     std::atomic<uint64_t> total_messages_{0};
