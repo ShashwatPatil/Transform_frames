@@ -116,20 +116,27 @@ TransformConfig ConfigLoader::parseTransformConfig(const nlohmann::json& j) {
 
 bool ConfigLoader::validate(const AppConfig& config) {
     // Validate MQTT configuration
-    if (config.mqtt.broker_address.empty()) {
-        throw std::invalid_argument("MQTT broker address cannot be empty");
+    if (config.mqtt.source_broker.broker_address.empty()) {
+        throw std::invalid_argument("Source MQTT broker address cannot be empty");
     }
 
-    if (config.mqtt.source_topic.empty()) {
+    if (config.mqtt.source_broker.source_topic.empty()) {
         throw std::invalid_argument("MQTT source topic cannot be empty");
     }
 
-    if (config.mqtt.qos < 0 || config.mqtt.qos > 2) {
+    if (config.mqtt.source_broker.qos < 0 || config.mqtt.source_broker.qos > 2) {
         throw std::invalid_argument("MQTT QoS must be 0, 1, or 2");
     }
 
-    if (config.mqtt.keepalive_interval < 1) {
+    if (config.mqtt.source_broker.keepalive_interval < 1) {
         throw std::invalid_argument("MQTT keepalive interval must be positive");
+    }
+    
+    // Validate destination broker if in dual mode
+    if (config.mqtt.dual_mode) {
+        if (config.mqtt.dest_broker.broker_address.empty()) {
+            throw std::invalid_argument("Destination MQTT broker address cannot be empty");
+        }
     }
 
     // Validate transform configuration

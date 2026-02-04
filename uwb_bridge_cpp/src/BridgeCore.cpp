@@ -73,7 +73,7 @@ bool BridgeCore::initialize() {
                     this->onMessageReceived(topic, payload);
                 }
             );
-            mqtt_dest_handler_ = mqtt_source_handler_.get();  // Point to same handler
+            // In single mode, both pointers point to the same handler (no second unique_ptr)
             spdlog::info("MQTT handler created: {}", config_.mqtt.source_broker.broker_address);
         }
 
@@ -143,9 +143,18 @@ void BridgeCore::stop() {
     // Print final statistics
     printStats();
 
-    // Disconnect MQTT
-    if (mqtt_handler_) {
-        mqtt_handler_->disconnect();
+    // Disconnect MQTT broker(s)
+    if (dual_mqtt_mode_) {
+        if (mqtt_source_handler_) {
+            mqtt_source_handler_->disconnect();
+        }
+        if (mqtt_dest_handler_) {
+            mqtt_dest_handler_->disconnect();
+        }
+    } else {
+        if (mqtt_source_handler_) {
+            mqtt_source_handler_->disconnect();
+        }
     }
 
     spdlog::info("BridgeCore stopped");
@@ -212,7 +221,11 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
         // Publish in detached thread to avoid deadlock from MQTT callback thread
         std::thread([this, output_topic, output_json, arrival_time]() {
             auto publish_start = std::chrono::high_resolution_clock::now();
-            if (mqtt_dest_handler_->publish(output_topic, output_json)) {
+            
+            // Use dest_handler in dual mode, source_handler in single mode
+            MqttHandler* pub_handler = dual_mqtt_mode_ ? mqtt_dest_handler_.get() : mqtt_source_handler_.get();
+            
+            if (pub_handler && pub_handler->publish(output_topic, output_json)) {
                 auto publish_end = std::chrono::high_resolution_clock::now();
                 auto publish_latency = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - publish_start);
                 auto end_to_end = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - arrival_time);
