@@ -3,21 +3,36 @@
   "_description": "This service subscribes to raw UWB coordinates via MQTT, transforms them using a custom library, and publishes the results",
   
   "mqtt": {
-    "broker_address": "tcp://localhost:1883",
-    "client_id": "uwb_bridge_cpp",
-    "username": "",
-    "password": "",
-    "source_topic": "tags/#",
-    "dest_topic_prefix": "processed/tags/",
-    "qos": 1,
-    "keepalive_interval": 60,
-    "clean_session": true,
-    "use_ssl": false,
+    "source_broker": {
+      "broker_address": "tcp://localhost:1883",
+      "client_id": "uwb_bridge_subscriber",
+      "username": "",
+      "password": "",
+      "source_topic": "tags/#",
+      "qos": 1,
+      "keepalive_interval": 60,
+      "clean_session": true,
+      "use_ssl": false,
+      
+      "_comment": "Source broker: Subscribe to raw UWB tag data"
+    },
     
-    "_comment_broker": "MQTT broker address. Format: tcp://host:port or ssl://host:port",
-    "_comment_source": "Topic pattern to subscribe to. Use # for wildcard (e.g., tags/# matches tags/0x1234)",
-    "_comment_dest": "Prefix for published topics. Tag ID will be appended (e.g., processed/tags/0x1234)",
-    "_comment_qos": "Quality of Service: 0 (at most once), 1 (at least once), 2 (exactly once)"
+    "dest_broker": {
+      "broker_address": "ssl://broker.hivemq.com:8883",
+      "client_id": "uwb_bridge_publisher",
+      "username": "",
+      "password": "",
+      "dest_topic_prefix": "uwb/processed/tags/",
+      "qos": 1,
+      "keepalive_interval": 60,
+      "clean_session": false,
+      "use_ssl": true,
+      
+      "_comment": "Destination broker: HiveMQ Cloud for publishing processed data",
+      "_note": "HiveMQ public broker: ssl://broker.hivemq.com:8883 (8883 for SSL, 1883 for non-SSL)"
+    },
+    
+    "_comment_dual": "Dual broker mode: Subscribe from local, publish to HiveMQ for internet access"
   },
   
   "transform": {

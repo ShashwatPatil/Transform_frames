@@ -48,19 +48,39 @@ AppConfig ConfigLoader::loadFromFile(const std::string& config_path) {
     return config;
 }
 
-MqttConfig ConfigLoader::parseMqttConfig(const nlohmann::json& j) {
+DualMqttConfig ConfigLoader::parseMqttConfig(const nlohmann::json& j) {
+    DualMqttConfig config;
+    
+    // Check if using dual broker mode (new format)
+    if (j.contains("source_broker") && j.contains("dest_broker")) {
+        spdlog::info("Detected dual MQTT broker configuration");
+        config.dual_mode = true;
+        config.source_broker = parseSingleBrokerConfig(j["source_broker"]);
+        config.dest_broker = parseSingleBrokerConfig(j["dest_broker"]);
+    } 
+    // Legacy single broker mode (old format)
+    else {
+        spdlog::info("Detected single MQTT broker configuration (legacy mode)");
+        config.dual_mode = false;
+        MqttConfig single = parseSingleBrokerConfig(j);
+        config.source_broker = single;
+        config.dest_broker = single;  // Use same broker for both
+    }
+
+    return config;
+}
+
+MqttConfig ConfigLoader::parseSingleBrokerConfig(const nlohmann::json& j) {
     MqttConfig config;
 
     // Required parameters
     if (!j.contains("broker_address")) {
-        throw std::runtime_error("Missing required parameter: mqtt.broker_address");
+        throw std::runtime_error("Missing required parameter: broker_address");
     }
     config.broker_address = j["broker_address"].get<std::string>();
 
-    if (!j.contains("source_topic")) {
-        throw std::runtime_error("Missing required parameter: mqtt.source_topic");
-    }
-    config.source_topic = j["source_topic"].get<std::string>();
+    // Source topic (required for source broker, optional for dest)
+    config.source_topic = j.value("source_topic", "");
 
     // Optional parameters with defaults
     config.client_id = j.value("client_id", "uwb_bridge_cpp");

@@ -41,17 +41,41 @@ bool BridgeCore::initialize() {
         spdlog::info("  Scale: {} px/mm", tf_config.scale);
         spdlog::info("  Rotation: {} rad", tf_config.rotation_rad);
 
-        // Initialize MQTT handler with callback
-        spdlog::info("Creating MQTT handler...");
+        // Initialize MQTT handlers
+        spdlog::info("Creating MQTT handlers...");
+        dual_mqtt_mode_ = config_.mqtt.dual_mode;
         
-        mqtt_handler_ = std::make_unique<MqttHandler>(
-            config_.mqtt,
-            [this](const std::string& topic, const std::string& payload) {
-                this->onMessageReceived(topic, payload);
-            }
-        );
-        
-        spdlog::info("MQTT handler created successfully");
+        if (dual_mqtt_mode_) {
+            spdlog::info("Dual MQTT mode: separate source and destination brokers");
+            
+            // Source MQTT handler (subscribe only)
+            mqtt_source_handler_ = std::make_unique<MqttHandler>(
+                config_.mqtt.source_broker,
+                [this](const std::string& topic, const std::string& payload) {
+                    this->onMessageReceived(topic, payload);
+                }
+            );
+            spdlog::info("Source MQTT handler created: {}", config_.mqtt.source_broker.broker_address);
+            
+            // Destination MQTT handler (publish only, no callback needed)
+            mqtt_dest_handler_ = std::make_unique<MqttHandler>(
+                config_.mqtt.dest_broker,
+                nullptr  // No message callback for publish-only handler
+            );
+            spdlog::info("Destination MQTT handler created: {}", config_.mqtt.dest_broker.broker_address);
+        } else {
+            spdlog::info("Single MQTT mode: same broker for source and destination");
+            
+            // Single broker for both subscribe and publish
+            mqtt_source_handler_ = std::make_unique<MqttHandler>(
+                config_.mqtt.source_broker,
+                [this](const std::string& topic, const std::string& payload) {
+                    this->onMessageReceived(topic, payload);
+                }
+            );
+            mqtt_dest_handler_ = mqtt_source_handler_.get();  // Point to same handler
+            spdlog::info("MQTT handler created: {}", config_.mqtt.source_broker.broker_address);
+        }
 
         initialized_ = true;
         spdlog::info("BridgeCore initialization complete");
@@ -77,17 +101,32 @@ bool BridgeCore::start() {
 
     spdlog::info("Starting BridgeCore...");
 
-    // Connect to MQTT broker
-    if (!mqtt_handler_->connect()) {
-        spdlog::error("Failed to connect to MQTT broker");
-        return false;
+    // Connect to MQTT broker(s)
+    if (dual_mqtt_mode_) {
+        spdlog::info("Connecting to source MQTT broker...");
+        if (!mqtt_source_handler_->connect()) {
+            spdlog::error("Failed to connect to source MQTT broker");
+            return false;
+        }
+        
+        spdlog::info("Connecting to destination MQTT broker...");
+        if (!mqtt_dest_handler_->connect()) {
+            spdlog::error("Failed to connect to destination MQTT broker");
+            return false;
+        }
+    } else {
+        spdlog::info("Connecting to MQTT broker...");
+        if (!mqtt_source_handler_->connect()) {
+            spdlog::error("Failed to connect to MQTT broker");
+            return false;
+        }
     }
 
     running_ = true;
     start_time_ = std::chrono::system_clock::now();
     
     spdlog::info("BridgeCore started successfully");
-    spdlog::info("Listening for messages on topic: {}", config_.mqtt.source_topic);
+    spdlog::info("Listening for messages on topic: {}", config_.mqtt.source_broker.source_topic);
     
     return true;
 }
@@ -162,24 +201,24 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
         total_processing_time_us_ += transform_duration.count();
         
         // Log latency prominently
-        spdlog::info("[LATENCY] Tag {}: Transform={}μs, Total={}μs | ({:.2f}, {:.2f})mm -> ({:.3f}, {:.3f})m",
-                     tag_id, transform_duration.count(), total_latency.count(),
-                     uwb_x, uwb_y, meter_x, meter_y);
+        // spdlog::info("[LATENCY] Tag {}: Transform={}μs, Total={}μs | ({:.2f}, {:.2f})mm -> ({:.3f}, {:.3f})m",
+        //              tag_id, transform_duration.count(), total_latency.count(),
+        //              uwb_x, uwb_y, meter_x, meter_y);
         
         // Publish transformed data
-        std::string output_topic = config_.mqtt.dest_topic_prefix + tag_id;
+        std::string output_topic = config_.mqtt.dest_broker.dest_topic_prefix + tag_id;
         spdlog::debug("Publishing to topic: {}", output_topic);
         
         // Publish in detached thread to avoid deadlock from MQTT callback thread
         std::thread([this, output_topic, output_json, arrival_time]() {
             auto publish_start = std::chrono::high_resolution_clock::now();
-            if (mqtt_handler_->publish(output_topic, output_json)) {
+            if (mqtt_dest_handler_->publish(output_topic, output_json)) {
                 auto publish_end = std::chrono::high_resolution_clock::now();
                 auto publish_latency = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - publish_start);
                 auto end_to_end = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - arrival_time);
                 
                 successful_transforms_++;
-                spdlog::info("[PUBLISH] Publish={}μs, End-to-end={}μs", publish_latency.count(), end_to_end.count());
+                // spdlog::info("[PUBLISH] Publish={}μs, End-to-end={}μs", publish_latency.count(), end_to_end.count());
             } else {
                 failed_transforms_++;
                 spdlog::error("Failed to publish message");

@@ -147,7 +147,9 @@ private:
 
     AppConfig config_;
     std::unique_ptr<uwb_transform::FloorplanTransformer> transformer_;
-    std::unique_ptr<MqttHandler> mqtt_handler_;
+    std::unique_ptr<MqttHandler> mqtt_source_handler_;   // Subscribe to source broker
+    std::unique_ptr<MqttHandler> mqtt_dest_handler_;     // Publish to destination broker
+    bool dual_mqtt_mode_{false};  // True if using separate source/dest brokers
     
     std::atomic<bool> running_{false};
     std::atomic<bool> initialized_{false};

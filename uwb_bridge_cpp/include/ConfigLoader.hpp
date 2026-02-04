@@ -23,6 +23,15 @@ struct MqttConfig {
 };
 
 /**
+ * @brief Configuration structure for dual MQTT brokers (source + destination)
+ */
+struct DualMqttConfig {
+    MqttConfig source_broker;  ///< Source broker for subscribing
+    MqttConfig dest_broker;    ///< Destination broker for publishing
+    bool dual_mode;            ///< True if using separate brokers for source/dest
+};
+
+/**
  * @brief Configuration structure for UWB transformation
  */
 struct TransformConfig {
@@ -38,7 +47,7 @@ struct TransformConfig {
  * @brief Complete application configuration
  */
 struct AppConfig {
-    MqttConfig mqtt;
+    DualMqttConfig mqtt;
     TransformConfig transform;
     std::string log_level;        ///< Logging level (trace, debug, info, warn, error)
     std::string log_file;         ///< Log file path (empty for console only)
@@ -72,9 +81,14 @@ public:
 
 private:
     /**
-     * @brief Parse MQTT configuration section
+     * @brief Parse MQTT configuration section (single or dual broker)
      */
-    static MqttConfig parseMqttConfig(const nlohmann::json& j);
+    static DualMqttConfig parseMqttConfig(const nlohmann::json& j);
+    
+    /**
+     * @brief Parse single broker MQTT config
+     */
+    static MqttConfig parseSingleBrokerConfig(const nlohmann::json& j);
 
     /**
      * @brief Parse Transform configuration section
