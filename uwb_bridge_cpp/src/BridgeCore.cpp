@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iomanip>
 #include <thread>
+#include <chrono>
 
 namespace uwb_bridge {
 
@@ -112,7 +113,9 @@ void BridgeCore::stop() {
 }
 
 void BridgeCore::onMessageReceived(const std::string& topic, const std::string& payload) {
-    auto start_time = std::chrono::high_resolution_clock::now();
+    // Capture arrival timestamp immediately for end-to-end latency measurement
+    auto arrival_time = std::chrono::high_resolution_clock::now();
+    auto start_time = arrival_time;
     
     spdlog::debug("BridgeCore::onMessageReceived called - Topic: {}, Payload: {}", topic, payload);
     total_messages_++;
@@ -152,29 +155,36 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
         
         spdlog::debug("Created output JSON: {}", output_json);
 
+        // Calculate processing latency (transform time)
+        auto transform_end = std::chrono::high_resolution_clock::now();
+        auto transform_duration = std::chrono::duration_cast<std::chrono::microseconds>(transform_end - start_time);
+        auto total_latency = std::chrono::duration_cast<std::chrono::microseconds>(transform_end - arrival_time);
+        total_processing_time_us_ += transform_duration.count();
+        
+        // Log latency prominently
+        spdlog::info("[LATENCY] Tag {}: Transform={}μs, Total={}μs | ({:.2f}, {:.2f})mm -> ({:.3f}, {:.3f})m",
+                     tag_id, transform_duration.count(), total_latency.count(),
+                     uwb_x, uwb_y, meter_x, meter_y);
+        
         // Publish transformed data
         std::string output_topic = config_.mqtt.dest_topic_prefix + tag_id;
         spdlog::debug("Publishing to topic: {}", output_topic);
         
         // Publish in detached thread to avoid deadlock from MQTT callback thread
-        std::thread([this, output_topic, output_json]() {
+        std::thread([this, output_topic, output_json, arrival_time]() {
+            auto publish_start = std::chrono::high_resolution_clock::now();
             if (mqtt_handler_->publish(output_topic, output_json)) {
+                auto publish_end = std::chrono::high_resolution_clock::now();
+                auto publish_latency = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - publish_start);
+                auto end_to_end = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - arrival_time);
+                
                 successful_transforms_++;
-                spdlog::debug("Published successfully!");
+                spdlog::info("[PUBLISH] Publish={}μs, End-to-end={}μs", publish_latency.count(), end_to_end.count());
             } else {
                 failed_transforms_++;
                 spdlog::error("Failed to publish message");
             }
         }).detach();
-
-        // Update processing time statistics
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        total_processing_time_us_ += duration.count();
-
-        // Log at debug level (avoid spam in production)
-        spdlog::debug("Processed tag {}: ({:.2f}, {:.2f}) mm -> ({:.3f}, {:.3f}) m in {} μs",
-                     tag_id, uwb_x, uwb_y, meter_x, meter_y, duration.count());
 
     } catch (const std::exception& e) {
         spdlog::error("Exception in message processing: {}", e.what());
@@ -276,6 +286,7 @@ std::string BridgeCore::createOutputMessage(const std::string& tag_id,
     j["y"] = meter_y;
     j["z"] = uwb_z;
     j["timestamp"] = timestamp;
+    j["processing_timestamp"] = getCurrentTimestampMs();
     j["units"] = "meters";
     
     return j.dump();
