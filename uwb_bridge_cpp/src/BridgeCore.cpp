@@ -369,6 +369,51 @@ std::string BridgeCore::createOutputMessage(const std::string& tag_id,
     return j.dump();
 }
 
+std::string BridgeCore::processAndModifyMessage(const std::string& payload,
+                                               double transformed_x, 
+                                               double transformed_y, 
+                                               double transformed_z) {
+    try {
+        auto j = nlohmann::json::parse(payload);
+        
+        // Handle array format - modify first element
+        bool is_array = j.is_array();
+        auto& target = is_array ? j[0] : j;
+        
+        // Check if this is nested format (has data.coordinates)
+        bool is_nested = target.contains("data") && target["data"].is_object() && 
+                        target["data"].contains("coordinates");
+        
+        if (is_nested) {
+            // Modify existing nested structure in-place
+            auto& coords = target["data"]["coordinates"];
+            coords["x"] = transformed_x;
+            coords["y"] = transformed_y;
+            coords["z"] = transformed_z;
+            coords["frame_id"] = config_.transform.frame_id;
+            coords["processing_timestamp"] = getCurrentTimestampMs();
+            coords["units"] = config_.transform.output_units;
+            
+            return j.dump();
+        } else {
+            // Not nested format - use createOutputMessage for backward compatibility
+            std::string tag_id = "unknown";
+            if (target.contains("tagId")) {
+                tag_id = target["tagId"].get<std::string>();
+            } else if (target.contains("tag_id")) {
+                tag_id = target["tag_id"].get<std::string>();
+            }
+            return createOutputMessage(tag_id, transformed_x, transformed_y, transformed_z, getCurrentTimestampMs());
+        }
+        
+    } catch (const std::exception& e) {
+        spdlog::error("Error processing JSON message: {}", e.what());
+        // Fallback to simple output
+        return createOutputMessage("unknown", transformed_x, transformed_y, transformed_z, getCurrentTimestampMs());
+    }
+}
+
+
 std::string BridgeCore::extractTagIdFromTopic(const std::string& topic) {
     // Extract last part of topic (e.g., "tags/0x1234" -> "0x1234")
     size_t last_slash = topic.find_last_of('/');

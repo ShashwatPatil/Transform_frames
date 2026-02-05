@@ -121,6 +121,19 @@ private:
                             double& meter_x, double& meter_y);
 
     /**
+     * @brief Create output JSON message from transformed coordinates
+     * @param tag_id Tag identifier
+     * @param meter_x Transformed X coordinate (meters)
+     * @param meter_y Transformed Y coordinate (meters)
+     * @param uwb_z Original Z coordinate (mm)
+     * @param timestamp Original message timestamp
+     * @return JSON string for publishing
+     */
+    std::string createOutputMessage(const std::string& tag_id,
+                                   double meter_x, double meter_y, double uwb_z,
+                                   uint64_t timestamp);
+
+    /**
      * @brief Process and modify input JSON message with transformed coordinates
      * @param payload Original JSON payload (will be modified in-place)
      * @param transformed_x Transformed X coordinate
