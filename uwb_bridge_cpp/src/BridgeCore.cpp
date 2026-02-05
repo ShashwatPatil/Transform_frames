@@ -211,9 +211,17 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
             return;
         }
 
-        // Create output message
-        uint64_t timestamp = getCurrentTimestampMs();
-        std::string output_json = createOutputMessage(tag_id, meter_x, meter_y, uwb_z, timestamp);
+        // Transform Z coordinate (simple unit conversion)
+        double transformed_z = uwb_z;
+        if (config_.transform.output_units == "meters") {
+            transformed_z = uwb_z / 1000.0;  // mm to meters
+        } else if (config_.transform.output_units == "pixels") {
+            transformed_z = uwb_z * config_.transform.scale;  // mm to pixels
+        }
+        // else keep in millimeters
+
+        // Process and modify the original message to preserve nested structure
+        std::string output_json = processAndModifyMessage(payload, meter_x, meter_y, transformed_z);
         
         spdlog::debug("Created output JSON: {}", output_json);
 

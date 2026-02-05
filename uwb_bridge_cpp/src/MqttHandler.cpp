@@ -96,6 +96,12 @@ void Callback::on_success(const mqtt::token& tok) {
     spdlog::info("Successfully reconnected!");
     reconnect_attempts_ = 0;
     
+    // Resubscribe to topic only if not empty
+    if (source_topic_.empty()) {
+        spdlog::info("No topic to resubscribe - publish-only mode");
+        return;
+    }
+    
     // Resubscribe to topic
     try {
         client_.subscribe(source_topic_, qos_, nullptr, sub_listener_);
@@ -176,13 +182,18 @@ bool MqttHandler::connect() {
         
         spdlog::info("Connected to MQTT broker successfully");
         
-        // Subscribe to source topic
-        spdlog::info("Subscribing to topic: {} (QoS {})", 
-                     config_.source_topic, config_.qos);
+        // Subscribe to source topic only if it's not empty (for publish-only handlers)
+        if (!config_.source_topic.empty()) {
+            spdlog::info("Subscribing to topic: {} (QoS {})", 
+                         config_.source_topic, config_.qos);
+            
+            client_->subscribe(config_.source_topic, config_.qos, nullptr, *sub_listener_);
+            
+            spdlog::info("Subscribed successfully");
+        } else {
+            spdlog::info("No source topic configured - publish-only mode");
+        }
         
-        client_->subscribe(config_.source_topic, config_.qos, nullptr, *sub_listener_);
-        
-        spdlog::info("Subscribed successfully");
         connected_ = true;
         
         return true;

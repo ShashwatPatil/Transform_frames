@@ -26,10 +26,10 @@
       "qos": 1,
       "keepalive_interval": 30,
       "clean_session": true,
-      "use_ssl": true,
+      "use_ssl": false,
       
-      "_comment": "Destination broker: Your HiveMQ Cloud cluster for publishing processed data",
-      "_note": "Replace YOUR_HIVEMQ_USERNAME and YOUR_HIVEMQ_PASSWORD with actual credentials from HiveMQ dashboard"
+      "_comment": "Destination broker: Local test broker (change to HiveMQ for cloud publishing)",
+      "_note": "For HiveMQ: use ssl://63f9c72485ab42b28b77c5640699e17b.s1.eu.hivemq.cloud:8883 with credentials"
     },
     
     "_comment_dual": "Dual broker mode: Subscribe from local, publish to HiveMQ for internet access"
