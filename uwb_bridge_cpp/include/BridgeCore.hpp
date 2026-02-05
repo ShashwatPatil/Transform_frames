@@ -121,17 +121,17 @@ private:
                             double& meter_x, double& meter_y);
 
     /**
-     * @brief Create output JSON message
-     * @param tag_id Tag identifier
-     * @param meter_x Transformed X coordinate
-     * @param meter_y Transformed Y coordinate
-     * @param uwb_z Original Z coordinate
-     * @param timestamp Unix timestamp in milliseconds
-     * @return JSON string
+     * @brief Process and modify input JSON message with transformed coordinates
+     * @param payload Original JSON payload (will be modified in-place)
+     * @param transformed_x Transformed X coordinate
+     * @param transformed_y Transformed Y coordinate
+     * @param transformed_z Transformed Z coordinate
+     * @return Modified JSON string for publishing
      */
-    std::string createOutputMessage(const std::string& tag_id,
-                                   double meter_x, double meter_y, double uwb_z,
-                                   uint64_t timestamp);
+    std::string processAndModifyMessage(const std::string& payload,
+                                       double transformed_x, 
+                                       double transformed_y, 
+                                       double transformed_z);
 
     /**
      * @brief Extract tag ID from MQTT topic
