@@ -236,65 +236,25 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
         //              tag_id, transform_duration.count(), total_latency.count(),
         //              uwb_x, uwb_y, meter_x, meter_y);
         
-        // Publish transformed data
+        // Publish transformed data (directly - MQTT lib handles async)
         std::string output_topic = config_.mqtt.dest_broker.dest_topic_prefix + tag_id;
-        spdlog::debug("Publishing to topic: {}", output_topic);
         
-        // Capture needed data for thread - avoid capturing 'this' to prevent use-after-free
-        bool is_dual_mode = dual_mqtt_mode_;
-        auto* source_ptr = mqtt_source_handler_.get();
-        auto* dest_ptr = mqtt_dest_handler_.get();
-        auto shutdown_flag = &shutdown_requested_;
+        // Use dest_handler in dual mode, source_handler in single mode
+        MqttHandler* pub_handler = dual_mqtt_mode_ ? mqtt_dest_handler_.get() : mqtt_source_handler_.get();
         
-        // Publish in detached thread to avoid deadlock from MQTT callback thread
-        std::thread([is_dual_mode, source_ptr, dest_ptr, output_topic, output_json, arrival_time, shutdown_flag, this]() {
-            // Check if shutdown requested
-            if (shutdown_flag->load()) {
-                return;
-            }
-            
-            auto publish_start = std::chrono::high_resolution_clock::now();
-            
-            // Use dest_handler in dual mode, source_handler in single mode
-            MqttHandler* pub_handler = is_dual_mode ? dest_ptr : source_ptr;
-            
-            // Check if handler exists and is connected before attempting publish
-            if (!pub_handler) {
-                failed_transforms_++;
-                spdlog::error("Publish handler is null");
-                return;
-            }
-            
-            if (!pub_handler->isConnected()) {
-                failed_transforms_++;
-                spdlog::warn("Skipping publish - broker not connected");
-                return;
-            }
-            
-            // Retry mechanism: 3 attempts with 10ms delay
-            bool published = false;
-            for (int retry = 0; retry < 3 && !shutdown_flag->load(); retry++) {
-                if (pub_handler->publish(output_topic, output_json)) {
-                    published = true;
-                    break;
-                }
-                if (retry < 2) {  // Don't sleep on last attempt
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                }
-            }
-            
-            if (published) {
-                auto publish_end = std::chrono::high_resolution_clock::now();
-                auto publish_latency = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - publish_start);
-                auto end_to_end = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - arrival_time);
-                
-                successful_transforms_++;
-                // spdlog::info("[PUBLISH] Publish={}μs, End-to-end={}μs", publish_latency.count(), end_to_end.count());
-            } else {
-                failed_transforms_++;
-                spdlog::error("Failed to publish message after 3 retries");
-            }
-        }).detach();
+        if (!pub_handler || !pub_handler->isConnected()) {
+            failed_transforms_++;
+            spdlog::warn("Cannot publish - not connected to broker");
+            return;
+        }
+        
+        // Publish directly - much faster than spawning threads
+        if (pub_handler->publish(output_topic, output_json)) {
+            successful_transforms_++;
+        } else {
+            failed_transforms_++;
+            spdlog::error("Failed to publish message");
+        }
 
     } catch (const std::exception& e) {
         spdlog::error("Exception in message processing: {}", e.what());
@@ -398,34 +358,50 @@ std::string BridgeCore::processAndModifyMessage(const std::string& payload,
         bool is_array = j.is_array();
         auto& target = is_array ? j[0] : j;
         
-        // Navigate to coordinates object (create path if needed)
-        if (!target.contains("data")) {
-            target["data"] = nlohmann::json::object();
+        // Check if this is nested format (has data.coordinates)
+        bool is_nested = target.contains("data") && target["data"].is_object() && 
+                        target["data"].contains("coordinates");
+        
+        if (is_nested) {
+            // Modify existing nested structure in-place
+            auto& coords = target["data"]["coordinates"];
+            coords["x"] = transformed_x;
+            coords["y"] = transformed_y;
+            coords["z"] = transformed_z;
+            coords["frame_id"] = config_.transform.frame_id;
+            coords["processing_timestamp"] = getCurrentTimestampMs();
+            coords["units"] = config_.transform.output_units;
+            
+            return j.dump();
+        } else {
+            // Simple format: create new clean JSON (faster than modifying)
+            nlohmann::json output;
+            output["x"] = transformed_x;
+            output["y"] = transformed_y;
+            output["z"] = transformed_z;
+            output["frame_id"] = config_.transform.frame_id;
+            output["processing_timestamp"] = getCurrentTimestampMs();
+            output["units"] = config_.transform.output_units;
+            
+            // Preserve tag_id if present
+            if (target.contains("tagId")) {
+                output["tag_id"] = target["tagId"];
+            } else if (target.contains("tag_id")) {
+                output["tag_id"] = target["tag_id"];
+            }
+            
+            return output.dump();
         }
-        if (!target["data"].contains("coordinates")) {
-            target["data"]["coordinates"] = nlohmann::json::object();
-        }
-        
-        auto& coords = target["data"]["coordinates"];
-        
-        // Update coordinates with transformed values
-        coords["x"] = transformed_x;
-        coords["y"] = transformed_y;
-        coords["z"] = transformed_z;
-        
-        // Add frame_id from config
-        coords["frame_id"] = config_.transform.frame_id;
-        
-        // Add processing metadata
-        coords["processing_timestamp"] = getCurrentTimestampMs();
-        coords["units"] = config_.transform.output_units;
-        
-        return j.dump();
         
     } catch (const std::exception& e) {
         spdlog::error("Error modifying JSON message: {}", e.what());
-        // Fallback: return original payload
-        return payload;
+        // Fallback: create simple output
+        nlohmann::json fallback;
+        fallback["x"] = transformed_x;
+        fallback["y"] = transformed_y;
+        fallback["z"] = transformed_z;
+        fallback["units"] = config_.transform.output_units;
+        return fallback.dump();
     }
 }
 
