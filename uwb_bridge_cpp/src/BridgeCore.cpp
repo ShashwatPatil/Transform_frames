@@ -403,13 +403,8 @@ std::string BridgeCore::processAndModifyMessage(const std::string& payload,
             coords["units"] = config_.transform.output_units;
             
             // Remove anchor data to save bandwidth
-            if (coords.contains("anchor")) {
-                coords.erase("anchor");
-            }
-            
-            // Also remove from data if it exists there
-            if (target["data"].contains("anchors")) {
-                target["data"].erase("anchors");
+            if (target["data"].contains("anchorData")) {
+                target["data"].erase("anchorData");
             }
             
             return j.dump();
