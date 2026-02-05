@@ -110,6 +110,8 @@ TransformConfig ConfigLoader::parseTransformConfig(const nlohmann::json& j) {
     config.rotation_rad = j["rotation_rad"].get<double>();
     config.x_flipped = j.value("x_flipped", false);
     config.y_flipped = j.value("y_flipped", false);
+    config.frame_id = j.value("frame_id", "floorplan_pixel_frame");
+    config.output_units = j.value("output_units", "meters");
 
     return config;
 }

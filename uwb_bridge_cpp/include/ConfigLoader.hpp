@@ -41,6 +41,8 @@ struct TransformConfig {
     double rotation_rad;  ///< Rotation of UWB frame in radians
     bool x_flipped;       ///< True if UWB X axis opposes Image X axis
     bool y_flipped;       ///< True if UWB Y axis opposes Image Y axis
+    std::string frame_id; ///< Frame ID to add to output coordinates
+    std::string output_units; ///< Output units: "meters", "millimeters", or "pixels"
 };
 
 /**

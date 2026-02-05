@@ -5,6 +5,8 @@
   "rotation_rad": -0.4363323129985825,
   "x_flipped": true,
   "y_flipped": true,
+  "frame_id": "floorplan_pixel_frame",
+  "output_units": "meters",
   "_comment": "Configuration for UWB to Floorplan coordinate transformation",
   "_units": {
     "origin_x": "mm - X location of image top-left corner in UWB frame",
@@ -12,6 +14,8 @@
     "scale": "pixels/mm - Scale factor (1/24.1279818088302)",
     "rotation_rad": "radians - Rotation angle (counter-clockwise)",
     "x_flipped": "boolean - True if UWB X axis opposes Image X axis",
-    "y_flipped": "boolean - True if UWB Y axis opposes Image Y axis"
+    "y_flipped": "boolean - True if UWB Y axis opposes Image Y axis",
+    "frame_id": "string - Reference frame identifier for output coordinates",
+    "output_units": "string - Output units: meters, millimeters, or pixels"
   }
 }

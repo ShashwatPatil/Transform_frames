@@ -24,8 +24,8 @@
       "password": "Password123",
       "dest_topic_prefix": "uwb/processed/tags/",
       "qos": 1,
-      "keepalive_interval": 60,
-      "clean_session": false,
+      "keepalive_interval": 30,
+      "clean_session": true,
       "use_ssl": true,
       
       "_comment": "Destination broker: Your HiveMQ Cloud cluster for publishing processed data",
@@ -42,6 +42,8 @@
     "rotation_rad": -0.4363323129985825,
     "x_flipped": true,
     "y_flipped": true,
+    "frame_id": "floorplan_pixel_frame",
+    "output_units": "meters",
     
     "_comment": "Coordinate transformation parameters",
     "_units": {
@@ -50,7 +52,9 @@
       "scale": "pixels/mm - Scale factor",
       "rotation_rad": "radians - Rotation angle (counter-clockwise)",
       "x_flipped": "boolean - True if UWB X axis opposes Image X axis",
-      "y_flipped": "boolean - True if UWB Y axis opposes Image Y axis"
+      "y_flipped": "boolean - True if UWB Y axis opposes Image Y axis",
+      "frame_id": "string - Reference frame identifier for output coordinates",
+      "output_units": "string - Output units: meters, millimeters, or pixels"
     }
   },
   
