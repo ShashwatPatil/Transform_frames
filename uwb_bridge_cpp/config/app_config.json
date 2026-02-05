@@ -18,10 +18,10 @@
     },
     
     "dest_broker": {
-      "broker_address": "ssl://63f9c72485ab42b28b77c5640699e17b.s1.eu.hivemq.cloud:8883",
-      "client_id": "uwb_bridge_publisher",
-      "username": "SGP_test",
-      "password": "Password123",
+      "broker_address": "tcp://localhost:1883",
+      "client_id": "uwb_bridge_publisher_local",
+      "username": "",
+      "password": "",
       "dest_topic_prefix": "uwb/processed/tags/",
       "qos": 1,
       "keepalive_interval": 30,
