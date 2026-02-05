@@ -204,24 +204,16 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
 
         // Transform coordinates
         spdlog::debug("Transforming coordinates...");
-        double transformed_x, transformed_y;
-        if (!transformCoordinates(uwb_x, uwb_y, transformed_x, transformed_y)) {
+        double meter_x, meter_y;
+        if (!transformCoordinates(uwb_x, uwb_y, meter_x, meter_y)) {
             failed_transforms_++;
             spdlog::error("Transformation failed for tag {}", tag_id);
             return;
         }
 
-        // Transform Z coordinate (simple unit conversion)
-        double transformed_z = uwb_z;
-        if (config_.transform.output_units == "meters") {
-            transformed_z = uwb_z / 1000.0;  // mm to meters
-        } else if (config_.transform.output_units == "pixels") {
-            transformed_z = uwb_z * config_.transform.scale;  // mm to pixels
-        }
-        // else keep in millimeters
-
-        // Process and modify the original message with transformed coordinates
-        std::string output_json = processAndModifyMessage(payload, transformed_x, transformed_y, transformed_z);
+        // Create output message
+        uint64_t timestamp = getCurrentTimestampMs();
+        std::string output_json = createOutputMessage(tag_id, meter_x, meter_y, uwb_z, timestamp);
         
         spdlog::debug("Created output JSON: {}", output_json);
 
@@ -236,25 +228,40 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
         //              tag_id, transform_duration.count(), total_latency.count(),
         //              uwb_x, uwb_y, meter_x, meter_y);
         
-        // Publish transformed data (directly - MQTT lib handles async)
+        // Publish transformed data
         std::string output_topic = config_.mqtt.dest_broker.dest_topic_prefix + tag_id;
+        spdlog::debug("Publishing to topic: {}", output_topic);
         
-        // Use dest_handler in dual mode, source_handler in single mode
-        MqttHandler* pub_handler = dual_mqtt_mode_ ? mqtt_dest_handler_.get() : mqtt_source_handler_.get();
+        // Capture needed data for thread - avoid capturing 'this' to prevent use-after-free
+        bool is_dual_mode = dual_mqtt_mode_;
+        auto* source_ptr = mqtt_source_handler_.get();
+        auto* dest_ptr = mqtt_dest_handler_.get();
+        auto shutdown_flag = &shutdown_requested_;
         
-        if (!pub_handler || !pub_handler->isConnected()) {
-            failed_transforms_++;
-            spdlog::warn("Cannot publish - not connected to broker");
-            return;
-        }
-        
-        // Publish directly - much faster than spawning threads
-        if (pub_handler->publish(output_topic, output_json)) {
-            successful_transforms_++;
-        } else {
-            failed_transforms_++;
-            spdlog::error("Failed to publish message");
-        }
+        // Publish in detached thread to avoid deadlock from MQTT callback thread
+        std::thread([is_dual_mode, source_ptr, dest_ptr, output_topic, output_json, arrival_time, shutdown_flag, this]() {
+            // Check if shutdown requested
+            if (shutdown_flag->load()) {
+                return;
+            }
+            
+            auto publish_start = std::chrono::high_resolution_clock::now();
+            
+            // Use dest_handler in dual mode, source_handler in single mode
+            MqttHandler* pub_handler = is_dual_mode ? dest_ptr : source_ptr;
+            
+            if (pub_handler && pub_handler->publish(output_topic, output_json)) {
+                auto publish_end = std::chrono::high_resolution_clock::now();
+                auto publish_latency = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - publish_start);
+                auto end_to_end = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - arrival_time);
+                
+                successful_transforms_++;
+                // spdlog::info("[PUBLISH] Publish={}μs, End-to-end={}μs", publish_latency.count(), end_to_end.count());
+            } else {
+                failed_transforms_++;
+                spdlog::error("Failed to publish message");
+            }
+        }).detach();
 
     } catch (const std::exception& e) {
         spdlog::error("Exception in message processing: {}", e.what());
@@ -347,62 +354,19 @@ bool BridgeCore::transformCoordinates(double uwb_x, double uwb_y,
     }
 }
 
-std::string BridgeCore::processAndModifyMessage(const std::string& payload,
-                                               double transformed_x, 
-                                               double transformed_y, 
-                                               double transformed_z) {
-    try {
-        auto j = nlohmann::json::parse(payload);
-        
-        // Handle array format - modify first element
-        bool is_array = j.is_array();
-        auto& target = is_array ? j[0] : j;
-        
-        // Check if this is nested format (has data.coordinates)
-        bool is_nested = target.contains("data") && target["data"].is_object() && 
-                        target["data"].contains("coordinates");
-        
-        if (is_nested) {
-            // Modify existing nested structure in-place
-            auto& coords = target["data"]["coordinates"];
-            coords["x"] = transformed_x;
-            coords["y"] = transformed_y;
-            coords["z"] = transformed_z;
-            coords["frame_id"] = config_.transform.frame_id;
-            coords["processing_timestamp"] = getCurrentTimestampMs();
-            coords["units"] = config_.transform.output_units;
-            
-            return j.dump();
-        } else {
-            // Simple format: create new clean JSON (faster than modifying)
-            nlohmann::json output;
-            output["x"] = transformed_x;
-            output["y"] = transformed_y;
-            output["z"] = transformed_z;
-            output["frame_id"] = config_.transform.frame_id;
-            output["processing_timestamp"] = getCurrentTimestampMs();
-            output["units"] = config_.transform.output_units;
-            
-            // Preserve tag_id if present
-            if (target.contains("tagId")) {
-                output["tag_id"] = target["tagId"];
-            } else if (target.contains("tag_id")) {
-                output["tag_id"] = target["tag_id"];
-            }
-            
-            return output.dump();
-        }
-        
-    } catch (const std::exception& e) {
-        spdlog::error("Error modifying JSON message: {}", e.what());
-        // Fallback: create simple output
-        nlohmann::json fallback;
-        fallback["x"] = transformed_x;
-        fallback["y"] = transformed_y;
-        fallback["z"] = transformed_z;
-        fallback["units"] = config_.transform.output_units;
-        return fallback.dump();
-    }
+std::string BridgeCore::createOutputMessage(const std::string& tag_id,
+                                           double meter_x, double meter_y, double uwb_z,
+                                           uint64_t timestamp) {
+    nlohmann::json j;
+    j["tag_id"] = tag_id;
+    j["x"] = meter_x;
+    j["y"] = meter_y;
+    j["z"] = uwb_z;
+    j["timestamp"] = timestamp;
+    j["processing_timestamp"] = getCurrentTimestampMs();
+    j["units"] = "meters";
+    
+    return j.dump();
 }
 
 std::string BridgeCore::extractTagIdFromTopic(const std::string& topic) {
