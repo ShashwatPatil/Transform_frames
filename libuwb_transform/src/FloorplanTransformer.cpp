@@ -3,6 +3,8 @@
 #include <fstream>
 #include <stdexcept>
 #include <cmath>
+#include <mutex>
+#include <shared_mutex>
 
 using json = nlohmann::json;
 
