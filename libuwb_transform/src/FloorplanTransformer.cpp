@@ -82,6 +82,9 @@ Eigen::Matrix3d FloorplanTransformer::calculateTransformMatrix() const {
 }
 
 Eigen::Vector2d FloorplanTransformer::transformToPixel(double uwb_x, double uwb_y) const {
+    // Acquire shared lock for reading (allows multiple concurrent readers)
+    std::shared_lock<std::shared_mutex> lock(config_mutex_);
+    
     // Create homogeneous coordinate vector
     Eigen::Vector3d uwb_point(uwb_x, uwb_y, 1.0);
     
@@ -97,6 +100,9 @@ Eigen::Vector2d FloorplanTransformer::transformToPixel(double uwb_x, double uwb_
 }
 
 Eigen::Vector2d FloorplanTransformer::transformToUWB(double meter_x, double meter_y) const {
+    // Acquire shared lock for reading (allows multiple concurrent readers)
+    std::shared_lock<std::shared_mutex> lock(config_mutex_);
+    
     // Convert meters to pixels for reverse transform
     // meters * 1000 = mm, mm * scale = pixels
     double pixel_x = meter_x * 1000.0 * config_.scale;
@@ -110,6 +116,20 @@ Eigen::Vector2d FloorplanTransformer::transformToUWB(double meter_x, double mete
     
     // Return UWB coordinates (x, y) in mm
     return Eigen::Vector2d(uwb_point(0), uwb_point(1));
+}
+
+void FloorplanTransformer::updateConfig(const TransformConfig& config) {
+    // Acquire exclusive lock for writing (blocks all readers and writers)
+    std::unique_lock<std::shared_mutex> lock(config_mutex_);
+    
+    config_ = config;
+    recomputeMatrices();
+}
+
+void FloorplanTransformer::recomputeMatrices() {
+    // This method assumes the caller already holds a lock
+    transform_matrix_ = calculateTransformMatrix();
+    inverse_matrix_ = transform_matrix_.inverse();
 }
 
 } // namespace uwb_transform

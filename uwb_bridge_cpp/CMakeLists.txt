@@ -21,6 +21,16 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 find_package(Threads REQUIRED)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
+# Firebase C++ SDK configuration
+set(FIREBASE_CPP_SDK_DIR "/opt/firebase_cpp_sdk" CACHE PATH "Path to Firebase C++ SDK")
+if(EXISTS "${FIREBASE_CPP_SDK_DIR}")
+    message(STATUS "Firebase C++ SDK found at: ${FIREBASE_CPP_SDK_DIR}")
+    include_directories(${FIREBASE_CPP_SDK_DIR}/include)
+    link_directories(${FIREBASE_CPP_SDK_DIR}/libs/linux/x86_64/cxx11)
+else()
+    message(WARNING "Firebase C++ SDK not found at ${FIREBASE_CPP_SDK_DIR}. Download from: https://firebase.google.com/download/cpp")
+endif()
+
 # FetchContent for dependencies
 include(FetchContent)
 
@@ -76,6 +86,11 @@ FetchContent_MakeAvailable(paho-mqtt-cpp)
 # Add Transform_frames library
 add_subdirectory(${CMAKE_SOURCE_DIR}/../libuwb_transform ${CMAKE_BINARY_DIR}/transform_frames)
 
+# Find system libraries required by Firebase
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBSECRET REQUIRED libsecret-1)
+pkg_check_modules(GLIB REQUIRED glib-2.0 gobject-2.0)
+
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
@@ -84,6 +99,7 @@ set(SOURCES
     src/ConfigLoader.cpp
     src/MqttHandler.cpp
     src/BridgeCore.cpp
+    src/FirestoreManager.cpp
     src/main.cpp
 )
 
@@ -95,6 +111,8 @@ target_include_directories(uwb_bridge
     PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${paho-mqtt-cpp_SOURCE_DIR}/src
+        ${LIBSECRET_INCLUDE_DIRS}
+        ${GLIB_INCLUDE_DIRS}
 )
 
 # Link libraries
@@ -107,8 +125,22 @@ target_link_libraries(uwb_bridge
         paho-mqtt3as-static
         Threads::Threads
         Eigen3::Eigen
+        
+        # Use linking groups to handle circular dependencies
+        -Wl,--start-group
+        firebase_firestore
+        firebase_auth
+        firebase_app
+        -Wl,--end-group
+        
+        # System libraries required by Firebase
+        ${LIBSECRET_LIBRARIES}
+        ${GLIB_LIBRARIES}
+        
         ssl
         crypto
+        pthread
+        dl
 )
 
 # Installation

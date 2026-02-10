@@ -3,6 +3,7 @@
 
 #include <Eigen/Dense>
 #include <string>
+#include <shared_mutex>
 
 namespace uwb_transform {
 
@@ -23,6 +24,10 @@ struct TransformConfig {
     TransformConfig()
         : origin_x(0.0), origin_y(0.0), scale(1.0), 
           rotation_rad(0.0), x_flipped(false), y_flipped(false) {}
+    
+    TransformConfig(double ox, double oy, double s, double r, bool xf, bool yf)
+        : origin_x(ox), origin_y(oy), scale(s), 
+          rotation_rad(r), x_flipped(xf), y_flipped(yf) {}
 };
 
 /**
@@ -95,6 +100,17 @@ public:
      */
     const TransformConfig& getConfig() const { return config_; }
 
+    /**
+     * @brief Update configuration at runtime (thread-safe)
+     * 
+     * This method allows updating the transformation configuration while
+     * the transformer is actively being used by multiple threads. It uses
+     * exclusive locking to ensure safe updates.
+     * 
+     * @param config New configuration to apply
+     */
+    void updateConfig(const TransformConfig& config);
+
 private:
     /**
      * @brief Calculate the transformation matrix from configuration
@@ -102,9 +118,15 @@ private:
      */
     Eigen::Matrix3d calculateTransformMatrix() const;
 
-    TransformConfig config_;           ///< Stored configuration
-    Eigen::Matrix3d transform_matrix_; ///< Forward transformation matrix
-    Eigen::Matrix3d inverse_matrix_;   ///< Cached inverse matrix
+    /**
+     * @brief Recalculate transformation matrices from current config (not thread-safe, caller must lock)
+     */
+    void recomputeMatrices();
+
+    TransformConfig config_;                     ///< Stored configuration
+    Eigen::Matrix3d transform_matrix_;           ///< Forward transformation matrix
+    Eigen::Matrix3d inverse_matrix_;             ///< Cached inverse matrix
+    mutable std::shared_mutex config_mutex_;     ///< Mutex for thread-safe config updates
 };
 
 } // namespace uwb_transform

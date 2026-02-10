@@ -1,0 +1,41 @@
+[Unit]
+Description=UWB MQTT Bridge Service (Firestore Mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=uwb
+Group=uwb
+WorkingDirectory=/opt/uwb_bridge
+
+# Environment variables for Firestore
+Environment="FIREBASE_PROJECT_ID=your-firebase-project-id"
+Environment="FIREBASE_API_KEY=your-firebase-api-key"
+Environment="LD_LIBRARY_PATH=/opt/firebase_cpp_sdk/libs/linux/x86_64"
+
+# Run with Firestore mode
+ExecStart=/opt/uwb_bridge/bin/uwb_bridge --firestore
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/uwb_bridge/logs
+
+# Resource limits
+MemoryMax=512M
+TasksMax=100
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=uwb-bridge-firestore
+
+[Install]
+WantedBy=multi-user.target

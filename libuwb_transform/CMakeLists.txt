@@ -13,15 +13,30 @@ endif()
 
 # Find required packages
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(Threads REQUIRED)
+
+# Firebase C++ SDK configuration
+set(FIREBASE_CPP_SDK_DIR "/opt/firebase_cpp_sdk" CACHE PATH "Path to Firebase C++ SDK")
+if(EXISTS "${FIREBASE_CPP_SDK_DIR}")
+    message(STATUS "Firebase C++ SDK found at: ${FIREBASE_CPP_SDK_DIR}")
+    include_directories(${FIREBASE_CPP_SDK_DIR}/include)
+    link_directories(${FIREBASE_CPP_SDK_DIR}/libs/linux/x86_64/cxx11)
+else()
+    message(WARNING "Firebase C++ SDK not found at ${FIREBASE_CPP_SDK_DIR}. Download from: https://firebase.google.com/download/cpp")
+endif()
 
 # Library target
-add_library(uwb_transform SHARED
+# Build as STATIC to avoid -fPIC issues with Firebase static libraries
+add_library(uwb_transform STATIC
     src/FloorplanTransformer.cpp
 )
 
 target_link_libraries(uwb_transform
     PUBLIC
         Eigen3::Eigen
+        Threads::Threads
+        pthread
+        dl
 )
 
 target_include_directories(uwb_transform

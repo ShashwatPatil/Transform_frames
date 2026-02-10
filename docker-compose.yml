@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  uwb-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uwb-bridge-nova
+    restart: unless-stopped
+    
+    # Mount the credentials file from your local machine
+    volumes:
+      - ./firebase-credentials.json:/app/credentials/firebase-credentials.json:ro
+      - ./logs:/app/logs
+    
+    # Environment variables (credentials path is set in Dockerfile)
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/firebase-credentials.json
+      - LD_LIBRARY_PATH=/opt/firebase_cpp_sdk/libs/linux/x86_64:/usr/local/lib
+    
+    # Use host network if MQTT broker is on the same machine
+    # This allows container to access localhost:1883
+    network_mode: host
+    
+    # Or use bridge network if MQTT broker is remote
+    # networks:
+    #   - uwb-network
+    # ports:
+    #   - "1883:1883"  # Only if you need to expose MQTT
+
+# Uncomment if using custom network
+# networks:
+#   uwb-network:
+#     driver: bridge
