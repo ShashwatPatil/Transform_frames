@@ -18,7 +18,7 @@
     },
     
     "dest_broker": {
-      "broker_address": "tcp://localhost:1883",
+      "broker_address": "ssl://a80d6f741fff4a5b8bdb42597e205d7c.s1.eu.hivemq.cloud:8883",
       "client_id": "uwb_bridge_publisher_local",
       "username": "",
       "password": "",
@@ -26,7 +26,7 @@
       "qos": 1,
       "keepalive_interval": 30,
       "clean_session": true,
-      "use_ssl": false,
+      "use_ssl": true,
       
       "_comment": "Destination broker: Local test broker (change to HiveMQ for cloud publishing)",
       "_note": "For HiveMQ: use ssl://63f9c72485ab42b28b77c5640699e17b.s1.eu.hivemq.cloud:8883 with credentials"

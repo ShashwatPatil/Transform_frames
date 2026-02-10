@@ -56,7 +56,7 @@ Eigen::Matrix3d FloorplanTransformer::calculateTransformMatrix() const {
 
     // --- 2. Rotation Matrix (R) ---
     // Rotates the axes to align UWB with Image
-    // Note: Python code negates rotation, we apply the same convention
+    // Note: For pozyx we have to negate the rotation. IDK why (might change if we switch to other RTLS)
     double theta = -config_.rotation_rad;
     double c = std::cos(theta);
     double s = std::sin(theta);
