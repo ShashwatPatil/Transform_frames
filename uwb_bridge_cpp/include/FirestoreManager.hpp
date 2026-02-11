@@ -4,6 +4,7 @@
 #include "ConfigLoader.hpp"
 #include "FloorplanTransformer.hpp"
 #include <firebase/app.h>
+#include <firebase/auth.h>
 #include <firebase/firestore.h>
 #include <memory>
 #include <future>
@@ -107,6 +108,7 @@ private:
     uwb_bridge::TransformConfig parseTransformConfig(const firebase::firestore::DocumentSnapshot& snapshot);
 
     firebase::App* app_;                                        ///< Firebase App instance
+    firebase::auth::Auth* auth_;                                ///< Firebase Auth instance (required for service account auth)
     firebase::firestore::Firestore* db_;                        ///< Firestore database instance
     firebase::firestore::ListenerRegistration transform_listener_; ///< Transform config listener
     bool initialized_;                                          ///< Initialization state

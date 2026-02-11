@@ -1,0 +1,23 @@
+{
+  "project_info": {
+    "project_number": "722047840812",
+    "project_id": "nova-40708",
+    "storage_bucket": "nova-40708.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:722047840812:web:8af7f981415e44f613a329",
+        "android_client_info": {
+          "package_name": "com.nova.uwbbridge"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgK3nPMv_sfP9mz8LwR2fmZO63NtwEx7Q"
+        }
+      ]
+    }
+  ],
+  "configuration_version": "1"
+}

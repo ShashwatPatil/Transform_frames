@@ -4,11 +4,15 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <fstream>
+#include <thread>
+#include <chrono>
+#include <firebase/auth.h>
 
 namespace uwb_bridge {
 
 FirestoreManager::FirestoreManager()
     : app_(nullptr),
+      auth_(nullptr),
       db_(nullptr),
       initialized_(false),
       project_id_("") {
@@ -20,6 +24,11 @@ FirestoreManager::~FirestoreManager() {
     if (db_) {
         delete db_;
         db_ = nullptr;
+    }
+    
+    if (auth_) {
+        delete auth_;
+        auth_ = nullptr;
     }
     
     if (app_) {
@@ -119,6 +128,25 @@ bool FirestoreManager::initializeWithServiceAccount(const std::string& credentia
         firebase::AppOptions options;
         options.set_project_id(project_id_.c_str());
         
+        // Set API key and App ID (required for Firebase Auth)
+        // Try to read from google-services-desktop.json
+        std::ifstream google_services("google-services-desktop.json");
+        if (google_services.is_open()) {
+            try {
+                nlohmann::json services_json;
+                google_services >> services_json;
+                std::string api_key = services_json["client"][0]["api_key"][0]["current_key"].get<std::string>();
+                std::string app_id = services_json["client"][0]["client_info"]["mobilesdk_app_id"].get<std::string>();
+                options.set_api_key(api_key.c_str());
+                options.set_app_id(app_id.c_str());
+                spdlog::info("Loaded API key and App ID from google-services-desktop.json");
+            } catch (const std::exception& e) {
+                spdlog::warn("Could not parse google-services-desktop.json: {}", e.what());
+            }
+        } else {
+            spdlog::warn("google-services-desktop.json not found - auth may fail");
+        }
+        
         // Initialize Firebase App (will use GOOGLE_APPLICATION_CREDENTIALS)
         app_ = firebase::App::Create(options);
         if (!app_) {
@@ -127,6 +155,43 @@ bool FirestoreManager::initializeWithServiceAccount(const std::string& credentia
         }
         
         spdlog::info("Firebase App created successfully with service account");
+        
+        // Initialize Firebase Auth (REQUIRED for authentication)
+        spdlog::info("Initializing Firebase Auth...");
+        auth_ = firebase::auth::Auth::GetAuth(app_);
+        if (!auth_) {
+            spdlog::error("Failed to get Auth instance");
+            return false;
+        }
+        
+        // Sign in as Robot User (proper way for C++ Client SDK)
+        const char* robot_email = std::getenv("FIREBASE_ROBOT_EMAIL");
+        const char* robot_password = std::getenv("FIREBASE_ROBOT_PASSWORD");
+        
+        if (!robot_email || !robot_password) {
+            spdlog::error("FIREBASE_ROBOT_EMAIL and FIREBASE_ROBOT_PASSWORD must be set!");
+            spdlog::error("Example: export FIREBASE_ROBOT_EMAIL=uwb-bridge-robot@nova-40708.firebaseapp.com");
+            return false;
+        }
+        
+        spdlog::info("Signing in as robot user: {}", robot_email);
+        firebase::Future<firebase::auth::AuthResult> login_future = 
+            auth_->SignInWithEmailAndPassword(robot_email, robot_password);
+        
+        // Wait for sign-in to complete (blocking)
+        while (login_future.status() == firebase::kFutureStatusPending) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        
+        if (login_future.error() != firebase::auth::kAuthErrorNone) {
+            spdlog::error("Authentication failed: {}", login_future.error_message());
+            spdlog::error("Check that the robot user exists in Firebase Console and credentials are correct");
+            return false;
+        }
+        
+        spdlog::info("Successfully authenticated!");
+        spdlog::info("  User UID: {}", auth_->current_user().uid());
+        spdlog::info("  Email: {}", auth_->current_user().email());
         
         // Initialize Firestore
         spdlog::info("Initializing Firestore...");
@@ -156,8 +221,12 @@ std::future<AppConfig> FirestoreManager::fetchAppConfig() {
     
     spdlog::info("Fetching AppConfig from Firestore...");
     
-    // Get reference to the app_config document
-    auto doc_ref = db_->Collection("configs").Document("app_config");
+    // Get reference to the pozyx document (same path as transform listener)
+    // Path: setups/&GSP&Office&29607/environment/pozyx
+    auto doc_ref = db_->Collection("setups")
+                       .Document("&GSP&Office&29607")
+                       .Collection("environment")
+                       .Document("pozyx");
     
     // Perform async Get operation
     doc_ref.Get().OnCompletion(
@@ -211,8 +280,12 @@ bool FirestoreManager::startTransformListener(std::shared_ptr<uwb_transform::Flo
     
     spdlog::info("Starting real-time listener for TransformConfig...");
     
-    // Get reference to the transform_config document
-    auto doc_ref = db_->Collection("configs").Document("transform_config");
+    // Get reference to the pozyx document in your Firestore structure
+    // Path: setups/&GSP&Office&29607/environment/pozyx
+    auto doc_ref = db_->Collection("setups")
+                       .Document("&GSP&Office&29607")
+                       .Collection("environment")
+                       .Document("pozyx");
     
     // Add OnSnapshot listener for real-time updates
     transform_listener_ = doc_ref.AddSnapshotListener(
@@ -269,89 +342,50 @@ void FirestoreManager::stopTransformListener() {
 AppConfig FirestoreManager::parseAppConfig(const firebase::firestore::DocumentSnapshot& snapshot) {
     AppConfig config;
     
-    // Parse MQTT configuration
+    // Parse MQTT configuration from nested maps
     try {
-        // Check if dual broker mode
-        config.mqtt.dual_mode = snapshot.Get("mqtt_dual_mode").boolean_value();
+        // Enable dual broker mode (separate source and dest brokers)
+        config.mqtt.dual_mode = true;
         
-        if (config.mqtt.dual_mode) {
-            // Parse source broker
-            config.mqtt.source_broker.broker_address = 
-                snapshot.Get("mqtt_source_broker").string_value();
-            config.mqtt.source_broker.client_id = 
-                snapshot.Get("mqtt_source_client_id").string_value();
-            config.mqtt.source_broker.username = 
-                snapshot.Get("mqtt_source_username").string_value();
-            config.mqtt.source_broker.password = 
-                snapshot.Get("mqtt_source_password").string_value();
-            config.mqtt.source_broker.source_topic = 
-                snapshot.Get("mqtt_source_topic").string_value();
-            config.mqtt.source_broker.qos = 
-                static_cast<int>(snapshot.Get("mqtt_source_qos").integer_value());
-            config.mqtt.source_broker.keepalive_interval = 
-                static_cast<int>(snapshot.Get("mqtt_source_keepalive").integer_value());
-            config.mqtt.source_broker.clean_session = 
-                snapshot.Get("mqtt_source_clean_session").boolean_value();
-            config.mqtt.source_broker.use_ssl = 
-                snapshot.Get("mqtt_source_use_ssl").boolean_value();
-            
-            // Parse destination broker
-            config.mqtt.dest_broker.broker_address = 
-                snapshot.Get("mqtt_dest_broker").string_value();
-            config.mqtt.dest_broker.client_id = 
-                snapshot.Get("mqtt_dest_client_id").string_value();
-            config.mqtt.dest_broker.username = 
-                snapshot.Get("mqtt_dest_username").string_value();
-            config.mqtt.dest_broker.password = 
-                snapshot.Get("mqtt_dest_password").string_value();
-            config.mqtt.dest_broker.dest_topic_prefix = 
-                snapshot.Get("mqtt_dest_topic_prefix").string_value();
-            config.mqtt.dest_broker.qos = 
-                static_cast<int>(snapshot.Get("mqtt_dest_qos").integer_value());
-            config.mqtt.dest_broker.keepalive_interval = 
-                static_cast<int>(snapshot.Get("mqtt_dest_keepalive").integer_value());
-            config.mqtt.dest_broker.clean_session = 
-                snapshot.Get("mqtt_dest_clean_session").boolean_value();
-            config.mqtt.dest_broker.use_ssl = 
-                snapshot.Get("mqtt_dest_use_ssl").boolean_value();
-        } else {
-            // Single broker mode
-            config.mqtt.source_broker.broker_address = 
-                snapshot.Get("mqtt_broker").string_value();
-            config.mqtt.source_broker.client_id = 
-                snapshot.Get("mqtt_client_id").string_value();
-            config.mqtt.source_broker.username = 
-                snapshot.Get("mqtt_username").string_value();
-            config.mqtt.source_broker.password = 
-                snapshot.Get("mqtt_password").string_value();
-            config.mqtt.source_broker.source_topic = 
-                snapshot.Get("mqtt_source_topic").string_value();
-            config.mqtt.source_broker.dest_topic_prefix = 
-                snapshot.Get("mqtt_dest_topic_prefix").string_value();
-            config.mqtt.source_broker.qos = 
-                static_cast<int>(snapshot.Get("mqtt_qos").integer_value());
-            config.mqtt.source_broker.keepalive_interval = 
-                static_cast<int>(snapshot.Get("mqtt_keepalive").integer_value());
-            config.mqtt.source_broker.clean_session = 
-                snapshot.Get("mqtt_clean_session").boolean_value();
-            config.mqtt.source_broker.use_ssl = 
-                snapshot.Get("mqtt_use_ssl").boolean_value();
-            
-            // Copy to dest_broker for compatibility
-            config.mqtt.dest_broker = config.mqtt.source_broker;
-        }
+        // Parse source_broker map
+        auto source_map = snapshot.Get("source_broker").map_value();
+        config.mqtt.source_broker.broker_address = source_map["broker_address"].string_value();
+        config.mqtt.source_broker.port = static_cast<int>(source_map["port"].integer_value());
+        config.mqtt.source_broker.client_id = source_map["client_id"].string_value();
+        config.mqtt.source_broker.username = source_map["username"].string_value();
+        config.mqtt.source_broker.password = source_map["password"].string_value();
+        config.mqtt.source_broker.source_topic = source_map["source_topic"].string_value();
+        config.mqtt.source_broker.qos = static_cast<int>(source_map["qos"].integer_value());
+        config.mqtt.source_broker.keepalive_interval = static_cast<int>(source_map["keepalive_interval"].integer_value());
+        config.mqtt.source_broker.clean_session = source_map["clean_session"].boolean_value();
+        config.mqtt.source_broker.use_ssl = source_map["use_ssl"].boolean_value();
+        config.mqtt.source_broker.use_websockets = source_map["use_websockets"].boolean_value();
+        config.mqtt.source_broker.ws_path = source_map["ws_path"].string_value();
         
-        // Parse transform configuration (will be updated via listener, but set initial values)
+        // Parse dest_broker map
+        auto dest_map = snapshot.Get("dest_broker").map_value();
+        config.mqtt.dest_broker.broker_address = dest_map["broker_address"].string_value();
+        config.mqtt.dest_broker.port = static_cast<int>(dest_map["port"].integer_value());
+        config.mqtt.dest_broker.client_id = dest_map["client_id"].string_value();
+        config.mqtt.dest_broker.username = dest_map["username"].string_value();
+        config.mqtt.dest_broker.password = dest_map["password"].string_value();
+        config.mqtt.dest_broker.dest_topic_prefix = dest_map["dest_topic_prefix"].string_value();
+        config.mqtt.dest_broker.qos = static_cast<int>(dest_map["qos"].integer_value());
+        config.mqtt.dest_broker.keepalive_interval = static_cast<int>(dest_map["keepalive_interval"].integer_value());
+        config.mqtt.dest_broker.clean_session = dest_map["clean_session"].boolean_value();
+        config.mqtt.dest_broker.use_ssl = dest_map["use_ssl"].boolean_value();
+        config.mqtt.dest_broker.use_websockets = dest_map["use_websockets"].boolean_value();
+        config.mqtt.dest_broker.ws_path = dest_map["ws_path"].string_value();
+        
+        // Parse transform configuration (same document)
         uwb_bridge::TransformConfig transform = parseTransformConfig(snapshot);
         config.transform = transform;
         
-        // Parse logging configuration
-        config.log_level = snapshot.Get("log_level").string_value();
-        config.log_file = snapshot.Get("log_file").string_value();
-        config.log_rotation_size_mb = 
-            static_cast<int>(snapshot.Get("log_rotation_size_mb").integer_value());
-        config.log_rotation_count = 
-            static_cast<int>(snapshot.Get("log_rotation_count").integer_value());
+        // Set default logging configuration (not in Firestore)
+        config.log_level = "info";
+        config.log_file = "/var/log/uwb_bridge/uwb_bridge.log";
+        config.log_rotation_size_mb = 10;
+        config.log_rotation_count = 3;
         
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("Failed to parse AppConfig fields: ") + e.what());
@@ -366,14 +400,24 @@ uwb_bridge::TransformConfig FirestoreManager::parseTransformConfig(
     uwb_bridge::TransformConfig config;
     
     try {
-        config.origin_x = snapshot.Get("origin_x").double_value();
-        config.origin_y = snapshot.Get("origin_y").double_value();
-        config.scale = snapshot.Get("scale").double_value();
-        config.rotation_rad = snapshot.Get("rotation_rad").double_value();
-        config.x_flipped = snapshot.Get("x_flipped").boolean_value();
-        config.y_flipped = snapshot.Get("y_flipped").boolean_value();
-        config.frame_id = snapshot.Get("frame_id").string_value();
-        config.output_units = snapshot.Get("output_units").string_value();
+        // Get the nested "transform" map
+        auto transform_map = snapshot.Get("transform").map_value();
+        
+        config.origin_x = transform_map["origin_x"].double_value();
+        config.origin_y = transform_map["origin_y"].double_value();
+        config.scale = transform_map["scale"].double_value();
+        config.rotation_rad = transform_map["rotation"].double_value();
+        
+        // Convert flip values: 1 means flipped (true), -1 means not flipped (false)
+        int x_flip_val = static_cast<int>(transform_map["x_flip"].integer_value());
+        int y_flip_val = static_cast<int>(transform_map["y_flip"].integer_value());
+        
+        config.x_flipped = (x_flip_val == 1);
+        config.y_flipped = (y_flip_val == -1);  // -1 means flipped for y
+        
+        // Set defaults for fields not in your DB
+        config.frame_id = "floorplan_pixel_frame";
+        config.output_units = "meters";
         
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("Failed to parse TransformConfig fields: ") + e.what());

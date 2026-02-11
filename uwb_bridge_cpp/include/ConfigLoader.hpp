@@ -11,6 +11,7 @@ namespace uwb_bridge {
  */
 struct MqttConfig {
     std::string broker_address;  ///< MQTT broker address (e.g., "tcp://localhost:1883")
+    int port;                    ///< MQTT broker port (optional, extracted from address if not set)
     std::string client_id;       ///< MQTT client identifier
     std::string username;        ///< MQTT username (optional)
     std::string password;        ///< MQTT password (optional)
@@ -20,6 +21,8 @@ struct MqttConfig {
     int keepalive_interval;      ///< Keep-alive interval in seconds
     bool clean_session;          ///< Clean session flag
     bool use_ssl;                ///< Enable SSL/TLS
+    bool use_websockets;         ///< Use WebSocket transport (required for some cloud brokers like Pozyx)
+    std::string ws_path;         ///< WebSocket path (default: "/mqtt")
 };
 
 /**

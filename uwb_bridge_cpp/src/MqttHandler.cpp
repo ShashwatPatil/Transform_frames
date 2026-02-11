@@ -121,9 +121,45 @@ MqttHandler::MqttHandler(const MqttConfig& config, MessageCallback callback)
     spdlog::info("  Source Topic: {}", config_.source_topic);
     spdlog::info("  Destination Prefix: {}", config_.dest_topic_prefix);
 
+    // Build server URI with WebSocket support
+    std::string server_uri;
+    if (config_.use_websockets) {
+        // WebSocket mode: construct ws:// or wss:// URI
+        std::string protocol = config_.use_ssl ? "wss://" : "ws://";
+        std::string ws_path = config_.ws_path.empty() ? "/mqtt" : config_.ws_path;
+        
+        // Remove any protocol prefix from broker_address if present
+        std::string broker = config_.broker_address;
+        size_t proto_pos = broker.find("://");
+        if (proto_pos != std::string::npos) {
+            broker = broker.substr(proto_pos + 3);
+        }
+        
+        // Build URI: wss://host:port/path
+        if (config_.port > 0) {
+            server_uri = protocol + broker + ":" + std::to_string(config_.port) + ws_path;
+        } else {
+            server_uri = protocol + broker + ws_path;
+        }
+        spdlog::info("WebSocket mode: {}", server_uri);
+    } else {
+        // Standard MQTT: use broker_address as-is or construct tcp:// URI
+        server_uri = config_.broker_address;
+        if (server_uri.find("://") == std::string::npos) {
+            // No protocol specified, add tcp:// or ssl://
+            std::string protocol = config_.use_ssl ? "ssl://" : "tcp://";
+            if (config_.port > 0) {
+                server_uri = protocol + server_uri + ":" + std::to_string(config_.port);
+            } else {
+                server_uri = protocol + server_uri;
+            }
+        }
+        spdlog::info("Standard MQTT mode: {}", server_uri);
+    }
+
     // Create MQTT client
     client_ = std::make_unique<mqtt::async_client>(
-        config_.broker_address,
+        server_uri,
         config_.client_id);
 
     // Configure connection options

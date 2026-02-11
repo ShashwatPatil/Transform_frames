@@ -91,6 +91,11 @@ MqttConfig ConfigLoader::parseSingleBrokerConfig(const nlohmann::json& j) {
     config.keepalive_interval = j.value("keepalive_interval", 60);
     config.clean_session = j.value("clean_session", true);
     config.use_ssl = j.value("use_ssl", false);
+    
+    // WebSocket support (new)
+    config.port = j.value("port", 0);
+    config.use_websockets = j.value("use_websockets", false);
+    config.ws_path = j.value("ws_path", "/mqtt");
 
     return config;
 }
