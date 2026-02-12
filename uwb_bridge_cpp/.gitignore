@@ -33,3 +33,19 @@ external/*/
 # OS
 .DS_Store
 *~
+
+# Security: Never commit credentials!
+nova_database_cred.json
+*firebase*.json
+*service-account*.json
+config/runtime_config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+ENV/
+env/
+.venv/

@@ -1,0 +1,8 @@
+# Python Dependencies for UWB Bridge Manager
+# ============================================
+
+# Firebase Admin SDK - For Firestore real-time configuration
+firebase-admin>=6.0.0,<7.0.0
+
+# Optional: For enhanced type checking (development)
+# mypy>=1.0.0

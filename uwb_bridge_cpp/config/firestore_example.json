@@ -1,0 +1,44 @@
+{
+  "_comment": "Example Firestore Document Structure",
+  "_comment2": "Path: setups/&GSP&Office&29607/environment/pozyx",
+  "_comment3": "This is the structure expected by bridge_manager.py",
+  
+  "source_broker": {
+    "broker_address": "mqtt.cloud.pozyxlabs.com",
+    "port": 443,
+    "use_ssl": true,
+    "username": "68655099c9acbd4db21ca60e",
+    "password": "4e94bf37-7deb-4357-b2be-1c7d0778f2e5",
+    "source_topic": "68655099c9acbd4db21ca60e",
+    "client_id": "uwb_bridge_subscriber",
+    "qos": 1,
+    "keepalive_interval": 60,
+    "clean_session": true
+  },
+  
+  "dest_broker": {
+    "broker_address": "your-mqtt-broker.example.com",
+    "port": 8883,
+    "use_ssl": true,
+    "username": "your_dest_username",
+    "password": "your_dest_password",
+    "dest_topic_prefix": "uwb/processed/tags/",
+    "client_id": "uwb_bridge_publisher",
+    "qos": 1
+  },
+  
+  "transform": {
+    "_comment": "Coordinate transformation parameters",
+    "origin_x": -5994.48,
+    "origin_y": 31132.18,
+    "rotation": 0.0,
+    "scale": 18.929,
+    "x_flip": 1,
+    "y_flip": -1,
+    "frame_id": "floorplan_frame",
+    "output_units": "meters"
+  },
+  
+  "log_level": "info",
+  "log_file": "uwb_bridge.log"
+}

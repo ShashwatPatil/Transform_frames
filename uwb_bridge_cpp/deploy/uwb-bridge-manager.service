@@ -1,0 +1,49 @@
+[Unit]
+Description=UWB Bridge Manager - Python Controller
+Documentation=file:///opt/uwb_bridge/BRIDGE_MANAGER_README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# User and group (create with: sudo useradd -r -s /bin/false uwb)
+User=uwb
+Group=uwb
+
+# Working directory - adjust to your installation path
+WorkingDirectory=/opt/uwb_bridge
+
+# Command to execute
+ExecStart=/usr/bin/python3 /opt/uwb_bridge/bridge_manager.py
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=uwb-bridge-manager
+
+# Environment variables (if needed)
+# Environment="PYTHONUNBUFFERED=1"
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/uwb_bridge/config /opt/uwb_bridge/logs
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=512M
+
+# Process management
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
