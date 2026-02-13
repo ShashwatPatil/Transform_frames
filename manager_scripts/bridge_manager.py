@@ -33,15 +33,15 @@ from google.cloud.firestore_v1 import DocumentSnapshot
 # ==============================================================================
 
 # Firebase Configuration
-SERVICE_ACCOUNT_PATH = "nova_database_cred.json"
+SERVICE_ACCOUNT_PATH = "../uwb_bridge_cpp/nova_database_cred.json"
 FIRESTORE_COLLECTION = "setups"
 FIRESTORE_DOCUMENT = "&GSP&Office&29607"
 FIRESTORE_ENV_PATH = "environment"
 FIRESTORE_POZYX_DOC = "pozyx"
 
 # C++ Process Configuration
-CPP_EXECUTABLE = "./build/bin/uwb_bridge"
-CONFIG_FILE_PATH = "config/runtime_config.json"
+CPP_EXECUTABLE = "../uwb_bridge_cpp/build/bin/uwb_bridge"
+CONFIG_FILE_PATH = "../uwb_bridge_cpp/config/runtime_config.json"
 
 # Process Management
 RESTART_DELAY_SECONDS = 2

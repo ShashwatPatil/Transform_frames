@@ -183,11 +183,64 @@ void BridgeCore::onMessageReceived(const std::string& topic, const std::string& 
     total_messages_++;
 
     try {
-        // Parse message
+        // Check if payload is an array of tags
+        auto j_check = nlohmann::json::parse(payload);
+        if (j_check.is_array() && !j_check.empty()) {
+            // Array of tags - process each one
+            // spdlog::debug("Processing array of {} tags", j_check.size());
+            
+            // Process and transform all tags in the array
+            std::string output_json = processAndModifyMessageArray(payload);
+            
+            if (output_json.empty()) {
+                spdlog::error("Failed to process tag array");
+                failed_transforms_++;
+                return;
+            }
+            
+            // spdlog::debug("Created output JSON array: {}", output_json);
+            
+            // Calculate processing latency
+            auto transform_end = std::chrono::high_resolution_clock::now();
+            auto transform_duration = std::chrono::duration_cast<std::chrono::microseconds>(transform_end - start_time);
+            auto total_latency = std::chrono::duration_cast<std::chrono::microseconds>(transform_end - arrival_time);
+            total_processing_time_us_ += transform_duration.count();
+            
+            // Publish transformed data to the common topic
+            std::string output_topic = config_.mqtt.dest_broker.dest_topic_prefix + "tags";
+            // spdlog::debug("Publishing array to topic: {}", output_topic);
+            
+            // Capture needed data for thread
+            bool is_dual_mode = dual_mqtt_mode_;
+            auto* source_ptr = mqtt_source_handler_.get();
+            auto* dest_ptr = mqtt_dest_handler_.get();
+            auto shutdown_flag = &shutdown_requested_;
+            
+            // Publish in detached thread
+            std::thread([is_dual_mode, source_ptr, dest_ptr, output_topic, output_json, arrival_time, shutdown_flag, this]() {
+                if (shutdown_flag->load()) {
+                    return;
+                }
+                
+                auto publish_start = std::chrono::high_resolution_clock::now();
+                MqttHandler* pub_handler = is_dual_mode ? dest_ptr : source_ptr;
+                
+                if (pub_handler && pub_handler->publish(output_topic, output_json)) {
+                    successful_transforms_++;
+                } else {
+                    failed_transforms_++;
+                    spdlog::error("Failed to publish array message");
+                }
+            }).detach();
+            
+            return;
+        }
+        
+        // Single tag processing (original logic)
         double uwb_x, uwb_y, uwb_z = 0.0;
         std::string tag_id;
 
-        spdlog::debug("Attempting to parse message...");
+        spdlog::debug("Attempting to parse single tag message...");
         if (!parseMessage(payload, uwb_x, uwb_y, uwb_z, tag_id)) {
             malformed_messages_++;
             spdlog::warn("Malformed message on topic {}", topic);
@@ -283,10 +336,8 @@ bool BridgeCore::parseMessage(const std::string& payload,
     try {
         auto j = nlohmann::json::parse(payload);
         
-        // Handle Pozyx array format: [{"coordinates": {...}, ...}]
-        if (j.is_array() && !j.empty()) {
-            j = j[0];  // Extract first element
-        }
+        // Note: Array handling moved to onMessageReceived for proper multi-tag processing
+        // This function now only handles single tag objects
 
         // Try different possible field names for coordinates
         // Pozyx nested format: {"data": {"coordinates": {"x": ..., "y": ..., "z": ...}}}
@@ -377,6 +428,80 @@ std::string BridgeCore::createOutputMessage(const std::string& tag_id,
     return j.dump();
 }
 
+std::string BridgeCore::processAndModifyMessageArray(const std::string& payload) {
+    try {
+        auto j = nlohmann::json::parse(payload);
+        
+        if (!j.is_array() || j.empty()) {
+            spdlog::error("processAndModifyMessageArray called with non-array payload");
+            return "";
+        }
+        
+        // Process each tag in the array
+        for (size_t i = 0; i < j.size(); ++i) {
+            auto& tag_obj = j[i];
+            
+            // Extract coordinates from this tag
+            double uwb_x, uwb_y, uwb_z = 0.0;
+            std::string tag_id = "unknown";
+            
+            // Parse coordinates
+            if (tag_obj.contains("data") && tag_obj["data"].is_object() && 
+                tag_obj["data"].contains("coordinates") && tag_obj["data"]["coordinates"].is_object()) {
+                auto& coords = tag_obj["data"]["coordinates"];  // Reference so modifications stick!
+                uwb_x = coords["x"].get<double>();
+                uwb_y = coords["y"].get<double>();
+                uwb_z = coords.value("z", 0.0);
+                
+                // Extract tag ID
+                if (tag_obj.contains("tagId")) {
+                    tag_id = tag_obj["tagId"].get<std::string>();
+                }
+                
+                // Transform coordinates
+                double meter_x, meter_y;
+                if (!transformCoordinates(uwb_x, uwb_y, meter_x, meter_y)) {
+                    spdlog::error("Transformation failed for tag {} in array (index {})", tag_id, i);
+                    continue;  // Skip this tag but process others
+                }
+                
+                // Transform Z coordinate
+                double transformed_z = uwb_z;
+                if (config_.transform.output_units == "meters") {
+                    transformed_z = uwb_z / 1000.0;  // mm to meters
+                } else if (config_.transform.output_units == "pixels") {
+                    transformed_z = uwb_z * config_.transform.scale;  // mm to pixels
+                }
+                
+                // Update coordinates in place
+                coords["x"] = meter_x;
+                coords["y"] = meter_y;
+                coords["z"] = transformed_z;
+                coords["frame_id"] = config_.transform.frame_id;
+                coords["processing_timestamp"] = getCurrentTimestampMs();
+                coords["units"] = config_.transform.output_units;
+                
+                // Remove anchor data to save bandwidth
+                if (tag_obj["data"].contains("anchorData")) {
+                    tag_obj["data"].erase("anchorData");
+                }
+                
+                // spdlog::info("Transformed tag {} (index {}): ({:.2f}, {:.2f}, {:.2f})mm -> ({:.3f}, {:.3f}, {:.3f})m",
+                //             tag_id, i, uwb_x, uwb_y, uwb_z, meter_x, meter_y, transformed_z);
+            } else {
+                spdlog::warn("Tag at index {} has unexpected format, skipping", i);
+                spdlog::info("Tag object: {}", tag_obj.dump());
+            }
+        }
+        
+        return j.dump();
+        
+    } catch (const std::exception& e) {
+        spdlog::error("Error processing array message: {}", e.what());
+        return "";
+    }
+}
+
 std::string BridgeCore::processAndModifyMessage(const std::string& payload,
                                                double transformed_x, 
                                                double transformed_y, 
@@ -384,17 +509,14 @@ std::string BridgeCore::processAndModifyMessage(const std::string& payload,
     try {
         auto j = nlohmann::json::parse(payload);
         
-        // Handle array format - modify first element
-        bool is_array = j.is_array();
-        auto& target = is_array ? j[0] : j;
-        
+        // Single tag processing only (array handling moved to processAndModifyMessageArray)
         // Check if this is nested format (has data.coordinates)
-        bool is_nested = target.contains("data") && target["data"].is_object() && 
-                        target["data"].contains("coordinates");
+        bool is_nested = j.contains("data") && j["data"].is_object() && 
+                        j["data"].contains("coordinates");
         
         if (is_nested) {
             // Modify existing nested structure in-place
-            auto& coords = target["data"]["coordinates"];
+            auto& coords = j["data"]["coordinates"];
             coords["x"] = transformed_x;
             coords["y"] = transformed_y;
             coords["z"] = transformed_z;
@@ -403,18 +525,18 @@ std::string BridgeCore::processAndModifyMessage(const std::string& payload,
             coords["units"] = config_.transform.output_units;
             
             // Remove anchor data to save bandwidth
-            if (target["data"].contains("anchorData")) {
-                target["data"].erase("anchorData");
+            if (j["data"].contains("anchorData")) {
+                j["data"].erase("anchorData");
             }
             
             return j.dump();
         } else {
             // Not nested format - use createOutputMessage for backward compatibility
             std::string tag_id = "unknown";
-            if (target.contains("tagId")) {
-                tag_id = target["tagId"].get<std::string>();
-            } else if (target.contains("tag_id")) {
-                tag_id = target["tag_id"].get<std::string>();
+            if (j.contains("tagId")) {
+                tag_id = j["tagId"].get<std::string>();
+            } else if (j.contains("tag_id")) {
+                tag_id = j["tag_id"].get<std::string>();
             }
             return createOutputMessage(tag_id, transformed_x, transformed_y, transformed_z, getCurrentTimestampMs());
         }

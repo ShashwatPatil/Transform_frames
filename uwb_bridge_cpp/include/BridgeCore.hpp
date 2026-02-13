@@ -147,6 +147,13 @@ private:
                                        double transformed_z);
 
     /**
+     * @brief Process and modify array of tag messages with transformed coordinates
+     * @param payload Original JSON payload containing array of tags
+     * @return Modified JSON string with all tags transformed
+     */
+    std::string processAndModifyMessageArray(const std::string& payload);
+
+    /**
      * @brief Extract tag ID from MQTT topic
      * @param topic Full MQTT topic (e.g., "tags/0x1234")
      * @return Tag ID string

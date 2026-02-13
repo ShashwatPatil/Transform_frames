@@ -54,7 +54,7 @@ def check_python_version():
 def check_firebase_credentials():
     """Check if Firebase credentials file exists."""
     print("\nChecking Firebase credentials...")
-    cred_file = "nova_database_cred.json"
+    cred_file = "../uwb_bridge_cpp/nova_database_cred.json"
     
     if not os.path.exists(cred_file):
         print_error(f"Credentials file not found: {cred_file}")
@@ -106,7 +106,7 @@ def check_firebase_module():
 def check_cpp_executable():
     """Check if C++ executable exists and is executable."""
     print("\nChecking C++ executable...")
-    exe_path = "./build/bin/uwb_bridge"
+    exe_path = "../uwb_bridge_cpp/build/bin/uwb_bridge"
     
     if not os.path.exists(exe_path):
         print_error(f"C++ executable not found: {exe_path}")
@@ -135,7 +135,7 @@ def check_firestore_connection():
         from firebase_admin import credentials, firestore
         
         # Initialize Firebase
-        cred = credentials.Certificate("nova_database_cred.json")
+        cred = credentials.Certificate("../uwb_bridge_cpp/nova_database_cred.json")
         
         # Check if already initialized
         try:
